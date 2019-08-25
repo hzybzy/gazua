@@ -1,15 +1,16 @@
 from upbitpy import Upbitpy
-from coinone.core import Coinone, CoinoneV1, CoinoneV2
 import logging
 import threading
 import upbitwspy
-import time
 import requests #for real currency rate
 import json #for real currency rate
 import logging
 import platform
 import sqlite3
 import datetime
+import time
+from binance.client import Client # Import the Binance Client
+from binance.websockets import BinanceSocketManager # Import the Binance Socket Manager
 
 db_filename = 'gazua.db'
 
@@ -20,6 +21,40 @@ class Orderbook(object):
         self.ask = 0.0
         self.bid = 0.0
 
+class Binance_data():
+    def __init__(self):
+        self.lock_a = threading.Lock()    
+        self.orderbook = {}#Orderbook()
+        self.orderbook['XRPETH'] = Orderbook('XRPETH')
+        self.codeindex = {}
+        self.data_flag = False
+        self.last_code = ''
+    def callback(self,msg):
+        try:
+            if 'e' in msg:
+                print(msg['e'])
+            else:
+                self.lock_a.acquire()
+                # {'lastUpdateId': 211913589, 'bids': [['0.00143597', '41.00000000'], ['0.00143571', '1490.00000000'], ['0.00143455', '1724.00000000'], ['0.00143453', '7453.00000000'], ['0.00143446', '3022.00000000']], 'asks': [['0.00143712', '13.00000000'], ['0.00143724', '15.00000000'], ['0.00143738', '8.00000000'], ['0.00143754', '95.00000000'], ['0.00143821', '923.00000000']]}
+                self.orderbook['XRPETH'].ask = float(msg['asks'][0][0])
+                self.orderbook['XRPETH'].bid = float(msg['bids'][0][0])
+                self.data_flag = True 
+                self.lock_a.release()
+            # print(msg)
+                                    
+            # if (ret['type'] == 'orderbook'): 
+            #     self.last_code = ret['code']
+            #     self.data_flag = True            
+                    #     self.orderbook[self.codeindex[ret['code']]].timestamp = time.time()
+                    #     self.orderbook[self.codeindex[ret['code']]].units.clear()
+                    #     for i in range(10):
+                    #         self.orderbook[self.codeindex[ret['code']]].units.append(Orderbook_Unit(ret['orderbook_units'][i]['ask_price'], ret['orderbook_units'][i]['bid_price'], ret['orderbook_units'][i]['ask_size'], ret['orderbook_units'][i]['bid_size']))
+                    
+            
+        except Exception as e:
+            logging.info(e)
+            
+
 
 class Gazuabot():
 
@@ -28,52 +63,48 @@ class Gazuabot():
     balance['USDT'] = 0.0
     balance['BTC'] = 0.0
     balance['ETH'] = 0.0
-    coinone_api = Coinone()
-    coinone_btc_ask = 0.0
-    coinone_btc_bid = 0.0
-
-    coinone_data = {}
-    coinone_data['btc'] = Orderbook('btc')
-    coinone_data['xrp'] = Orderbook('xrp')
-    coinone_data['eth'] = Orderbook('eth')
-
+    
     upbit_data = {}
-    upbit_data['btc'] = Orderbook('btc')
+    
     upbit_data['xrp'] = Orderbook('xrp')
     upbit_data['eth'] = Orderbook('eth')
+    upbit_data['usdt'] = Orderbook('usdt')
+    upbit_data['XRPETH'] = Orderbook('XRPETH')
+
+    binance_data = {}
+    binance_data['ETHBTC'] = Orderbook('ETHBTC')
+    binance_data['XRPETH'] = Orderbook('XRPETH')
+    # binance_data['ETHBTC'] = Orderbook('ETHBTC')
     
     upbit_btc_ask = 0.0
     upbit_btc_bid = 0.0
 
-    U2C = {}
-    C2U = {}
-    U2C['btc'] = 0.0
-    C2U['btc'] = 0.0
-    U2C['eth'] = 0.0
-    C2U['eth'] = 0.0
-    U2C['xrp'] = 0.0
-    C2U['xrp'] = 0.0
+    U2B = {}
+    B2U = {}
+    U2B['XRPETH'] = 0.0
+    B2U['XRPETH'] = 0.0
+    U2B['eth'] = 0.0
+    B2U['eth'] = 0.0
+    U2B['xrp'] = 0.0
+    B2U['xrp'] = 0.0
 
     cross_order_unit = 0.005
 
     def __init__(self):
         test = 0
          
+    def add_upbit_orderbook(self, symbol):
+        self.upbit_data[symbol] = Orderbook(symbol)
+
+
     def worker_cooldown(self):
         time.sleep(1)
 
     def get_coinone(self):
         time.sleep(1)
 
-    def worker_get_coinone(self, symbol):
-        try:
-            data = self.coinone_api.orderbook(currency=symbol)
-            self.coinone_data[symbol].ask = float(data['ask'][0]['price'])
-            self.coinone_data[symbol].bid = float(data['bid'][0]['price'])
-        except:
-            self.coinone_data[symbol].ask = 0.0
-            self.coinone_data[symbol].bid = 0.0
-            
+    def worker_get_binance(self, symbol):
+        print('hello')
 
     def cooldown_order(self):
         t = threading.Thread(target=self.worker_cooldown)
@@ -84,54 +115,48 @@ class Gazuabot():
         db = sqlite3.connect(db_filename, detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
         cursor = db.cursor()
         cursor.execute('''CREATE TABLE IF NOT EXISTS 
-            coin_premium(date timestamp, 
-            U2C_BTC FLOAT, C2U_BTC FLOAT, U2C_ETH FLOAT, C2U_ETH FLOAT, U2C_XRP FLOAT, C2U_XRP FLOAT, 
-            UPBIT_BTC_ASK FLOAT, UPBIT_BTC_BID FLOAT, 
-            UPBIT_ETH_ASK FLOAT, UPBIT_ETH_BID FLOAT, 
-            UPBIT_XRP_ASK FLOAT, UPBIT_XRP_BID FLOAT, 
-            COINONE_BTC_ASK FLOAT, COINONE_BTC_BID FLOAT, 
-            COINONE_ETH_ASK FLOAT, COINONE_ETH_BID FLOAT, 
-            COINONE_XRP_ASK FLOAT, COINONE_XRP_BID FLOAT)''')
-        
-        db_patch = []
-        # db_patch.append("ALTER TABLE coin_premium ADD column KRW2USD_weight FLOAT")
-        # db_patch.append("ALTER TABLE coin_premium ADD column USD2KRW_weight FLOAT")
-        # db_patch.append("ALTER TABLE coin_premium ADD column balance_krw FLOAT")
-        # db_patch.append("ALTER TABLE coin_premium ADD column balance_usd FLOAT")
-        for q in db_patch:
-            try:
-                cursor.execute(q)
-            except:
-                print('Failed to add a column')
+            coin_xrpeth(date timestamp, 
+            U2B_XRPETH FLOAT, B2U_XRPETH FLOAT, 
+            UPBIT_XRPETH_ASK FLOAT, UPBIT_XRPETH_BID FLOAT, 
+            BINANCE_XRPETH_ASK FLOAT, BINANCE_XRPETH_BID FLOAT)''')
+ 
+        # db_patch = []
+        # # db_patch.append("ALTER TABLE coin_premium ADD column KRW2USD_weight FLOAT")
+        # # db_patch.append("ALTER TABLE coin_premium ADD column USD2KRW_weight FLOAT")
+        # # db_patch.append("ALTER TABLE coin_premium ADD column balance_krw FLOAT")
+        # # db_patch.append("ALTER TABLE coin_premium ADD column balance_usd FLOAT")
+        # for q in db_patch:
+        #     try:
+        #         cursor.execute(q)
+        #     except:
+        #         print('Failed to add a column')
         db.commit()
 
-        while True:       
-            #text = '%.3f, %.3f, %d, %d, %f, %f, %.2f' % (self.KRW2USD, self.USD2KRW, self.krw_ask, self.krw_bid, self.usd_ask, self.usd_bid, self.exchange_rate)
-            #logging.info(text)       
-            text = 'U2C, C2U[BTC,ETH,XRP] : %.4f, %.4f, %.4f, %.4f, %.4f, %.4f' %\
-                (self.U2C['btc'], self.C2U['btc'], 
-                self.U2C['eth'], self.C2U['eth'], 
-                self.U2C['xrp'], self.C2U['xrp'],)
+        while True:  
+            text = 'U2B, B2U(XRPETH) : %f %f %.8f %.8f %.8f %.8f' % (self.U2B['XRPETH'], self.B2U['XRPETH'], self.upbit_data['XRPETH'].ask, self.upbit_data['XRPETH'].bid, self.binance_data['XRPETH'].ask, self.binance_data['XRPETH'].bid )
+            # text = 'U2B, B2U[BTC,ETH,XRP] : %.4f, %.4f, %.4f, %.4f, %.4f, %.4f' %\
+            #     (self.U2B['btc'], self.B2U['btc'], 
+            #     self.U2B['eth'], self.B2U['eth'], 
+            #     self.U2B['xrp'], self.B2U['xrp'],)
             logging.info(text)                  
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            #if self.coinone_data['xrp'].ask > 0.0 and self.coinone_data['btc'].ask > 0.0 and self.coinone_data['eth'].ask > 0.0 and self.upbit_data['xrp'].ask > 0.0 and self.upbit_data['btc'].ask > 0.0 and self.upbit_data['eth'].ask > 0.0:
-            #cursor.execute('''INSERT INTO coin_premium(date, KRW2USD, USD2KRW, KRW_ASK, KRW_BID, USD_ASK, USD_BID, EXCHANGE_RATE, KRW2USD_weight, USD2KRW_weight, balance_krw, balance_usd, balance_btc) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)''', (now,self.KRW2USD, self.USD2KRW, self.krw_ask, self.krw_bid, self.usd_ask, self.usd_bid, self.exchange_rate,self.KRW2USD_weighted, self.USD2KRW_weighted, self.balance['KRW'], self.balance['USDT'],self.balance['BTC']))
-            cursor.execute('''INSERT INTO 
-                coin_premium(date, U2C_BTC, C2U_BTC, U2C_ETH, C2U_ETH, U2C_XRP, C2U_XRP, 
-                UPBIT_BTC_ASK, UPBIT_BTC_BID, UPBIT_ETH_ASK, UPBIT_ETH_BID, UPBIT_XRP_ASK, UPBIT_XRP_BID, 
-                COINONE_BTC_ASK, COINONE_BTC_BID, COINONE_ETH_ASK, COINONE_ETH_BID, COINONE_XRP_ASK, COINONE_XRP_BID) 
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', 
-                (now,self.U2C['btc'], self.C2U['btc'], self.U2C['eth'], self.C2U['eth'],self.U2C['xrp'], self.C2U['xrp'],
-                self.upbit_data['btc'].ask, self.upbit_data['btc'].bid,self.upbit_data['eth'].ask, self.upbit_data['eth'].bid,self.upbit_data['xrp'].ask, self.upbit_data['xrp'].bid,
-                self.coinone_data['btc'].ask, self.coinone_data['btc'].bid,self.coinone_data['eth'].ask, self.coinone_data['eth'].bid,self.coinone_data['xrp'].ask, self.coinone_data['xrp'].bid))
+            if self.binance_data['XRPETH'].ask > 0.0 and self.binance_data['XRPETH'].ask > 0.0 and self.upbit_data['XRPETH'].ask > 0.0 and self.upbit_data['XRPETH'].ask > 0.0:            
+                cursor.execute('''INSERT INTO 
+                    coin_xrpeth(date, U2B_XRPETH, B2U_XRPETH,
+                    UPBIT_XRPETH_ASK, UPBIT_XRPETH_BID,
+                    BINANCE_XRPETH_ASK, BINANCE_XRPETH_BID)
+                    VALUES(?,?,?,?,?,?,?)''', 
+                    (now,self.U2B['XRPETH'], self.B2U['XRPETH'],
+                    self.upbit_data['XRPETH'].ask, self.upbit_data['XRPETH'].bid,
+                    self.binance_data['XRPETH'].ask, self.binance_data['XRPETH'].bid))
 
 
-            db.commit()
+                db.commit()
             time.sleep(1)
             
             #time.sleep(1)
     
-    def loop(self, upbitws):
+    def loop(self, upbitws, bd):
         while True:
             if upbitws.codeindex:
                 update_flag = False                
@@ -140,45 +165,45 @@ class Gazuabot():
                 upbit_ask_qty = 0.0
                 upbit_bid_qty = 0.0
                 #get data from upbit websocket
-                if upbitws.data_flag and upbitws.orderbook[upbitws.codeindex['KRW-BTC']].units and upbitws.orderbook[upbitws.codeindex['KRW-ETH']].units and upbitws.orderbook[upbitws.codeindex['KRW-XRP']].units:
+                if upbitws.data_flag and upbitws.orderbook[upbitws.codeindex['ETH-XRP']].units:
                     mycode = ''
-                    if upbitws.last_code == 'KRW-BTC':
-                        mycode = 'btc'
-                    elif upbitws.last_code == 'KRW-XRP':
-                        mycode = 'xrp'
-                    elif upbitws.last_code == 'KRW-ETH':
-                        mycode = 'eth'
-                    
-                    t = threading.Thread(target=self.worker_get_coinone, args=(mycode,))
-                    t.start()
+                    if upbitws.last_code == 'ETH-XRP':
+                        mycode = 'XRPETH'
+                
+                    # t = threading.Thread(target=self.worker_get_binance, args=(mycode,))
+                    # t.start()
 
                     self.upbit_data[mycode].timestamp = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].timestamp                    
                     self.upbit_data[mycode].ask = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].units[0].ask_price
                     self.upbit_data[mycode].bid = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].units[0].bid_price
+                    self.binance_data[mycode].ask = bd.orderbook[mycode].ask
+                    self.binance_data[mycode].bid = bd.orderbook[mycode].bid
                         
                     upbitws.data_flag = False
-
-                    t.join()                    
+                            
                     #비율 계산
-                    self.U2C[mycode] = 100*(self.upbit_data[mycode].bid - self.coinone_data[mycode].ask) / (self.upbit_data[mycode].bid + self.coinone_data[mycode].ask)
-                    self.C2U[mycode] = 100*(self.coinone_data[mycode].bid - self.upbit_data[mycode].ask) / (self.upbit_data[mycode].ask + self.coinone_data[mycode].bid)
+                    self.U2B[mycode] = 100*(self.upbit_data[mycode].bid - self.binance_data[mycode].ask) / (self.upbit_data[mycode].bid + self.binance_data[mycode].ask)
+                    self.B2U[mycode] = 100*(self.binance_data[mycode].bid - self.upbit_data[mycode].ask) / (self.upbit_data[mycode].ask + self.binance_data[mycode].bid)
+                    
                     
                     update_flag = True
                 
                 upbitws.lock_a.release()
                 
                 
-                if update_flag:
+                # if update_flag:
                     #need to check timestamp diff  
                     #order and order_cooldown
-                    time.sleep(0.1)
+                time.sleep(0.1)
                     
 
 #For thread
+def handle_message(msg):
+    print(msg)
 
 def worker_get_orderbook(upbit):
     #start worker
-    upbit.set_type("orderbook",["KRW-BTC","KRW-ETH", "KRW-XRP"])
+    upbit.set_type("orderbook",["ETH-XRP"])
     upbit.run()
 
 if __name__ == '__main__':
@@ -189,8 +214,8 @@ if __name__ == '__main__':
     
     
     gbot = Gazuabot()
+    gbot.add_upbit_orderbook('ETH-XRP')
   
-
     upbitws = upbitwspy.UpbitWebsocket()
 
     t1 = threading.Thread(target=worker_get_orderbook, args=(upbitws,))
@@ -199,12 +224,29 @@ if __name__ == '__main__':
     t2 = threading.Thread(target=gbot.worker_logger)
     t2.start()
 
+    # Binance setting
+    PUBLIC = '<YOUR-PUBLIC-KEY>'
+    SECRET = '<YOUR-SECRET-KEY>'
+
+    bd = Binance_data()
+    binance_client = Client(api_key=PUBLIC, api_secret=SECRET)
+    bm = BinanceSocketManager(binance_client)
+    # conn_key = bm.start_trade_socket('XRPETH', bd.callback)
+    partial_key = bm.start_depth_socket('XRPETH', bd.callback, depth=BinanceSocketManager.WEBSOCKET_DEPTH_5)
+    bm.start()
+
     main_thread = threading.currentThread()
 
     gbot.order_flag = True
-    gbot.loop(upbitws)
+    gbot.loop(upbitws,bd)
 
     for t in threading.enumerate():
         if t is not main_thread:
             t.join()
+
+    bm.stop_socket(partial_key)
+
+    
+
+    
 
