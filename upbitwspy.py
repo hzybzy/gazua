@@ -42,6 +42,7 @@ class UpbitWebsocket():
         self.orderbook = []#Orderbook()
         self.codeindex = {}
         self.data_flag = False
+        self.last_code = ''
 
     def set_type(self, data_type, codes):
         if data_type == 'orderbook':
@@ -114,7 +115,7 @@ class UpbitWebsocket():
 
 if __name__ == "__main__":
     upbit = UpbitWebsocket()
-    upbit.set_type("orderbook",["KRW-BTC","USDT-BTC"])
+    upbit.set_type("orderbook",["ETH-XRP"])
     upbit.run()
     #t = threading.Thread(target=worker, args=(upbit,))
 

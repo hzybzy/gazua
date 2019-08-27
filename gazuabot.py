@@ -70,6 +70,9 @@ class Gazuabot():
     upbit_data['eth'] = Orderbook('eth')
     upbit_data['usdt'] = Orderbook('usdt')
     upbit_data['XRPETH'] = Orderbook('XRPETH')
+    upbit_data['XRPETH2'] = Orderbook('XRPETH2')
+    upbit_data['XRPKRW'] = Orderbook('XRPKRW')
+    upbit_data['ETHKRW'] = Orderbook('ETHKRW')
 
     binance_data = {}
     binance_data['ETHBTC'] = Orderbook('ETHBTC')
@@ -81,8 +84,10 @@ class Gazuabot():
 
     U2B = {}
     B2U = {}
-    U2B['XRPETH'] = 0.0
+    U2B['XRPETH'] = 0.0    
     B2U['XRPETH'] = 0.0
+    U2B['XRPETH2'] = 0.0
+    B2U['XRPETH2'] = 0.0
     U2B['eth'] = 0.0
     B2U['eth'] = 0.0
     U2B['xrp'] = 0.0
@@ -133,7 +138,7 @@ class Gazuabot():
         db.commit()
 
         while True:  
-            text = 'U2B, B2U(XRPETH) : %f %f %.8f %.8f %.8f %.8f' % (self.U2B['XRPETH'], self.B2U['XRPETH'], self.upbit_data['XRPETH'].ask, self.upbit_data['XRPETH'].bid, self.binance_data['XRPETH'].ask, self.binance_data['XRPETH'].bid )
+            text = 'U2B, B2U(XRPETH) : %f %f %f %f %.8f %.8f %.8f %.8f' % (self.U2B['XRPETH'], self.B2U['XRPETH'], self.U2B['XRPETH2'], self.B2U['XRPETH2'], self.upbit_data['XRPETH'].ask, self.upbit_data['XRPETH'].bid, self.binance_data['XRPETH'].ask, self.binance_data['XRPETH'].bid )
             # text = 'U2B, B2U[BTC,ETH,XRP] : %.4f, %.4f, %.4f, %.4f, %.4f, %.4f' %\
             #     (self.U2B['btc'], self.B2U['btc'], 
             #     self.U2B['eth'], self.B2U['eth'], 
@@ -169,22 +174,41 @@ class Gazuabot():
                     mycode = ''
                     if upbitws.last_code == 'ETH-XRP':
                         mycode = 'XRPETH'
+                        self.upbit_data[mycode].timestamp = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].timestamp                    
+                        self.upbit_data[mycode].ask = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].units[0].ask_price
+                        self.upbit_data[mycode].bid = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].units[0].bid_price
+                        self.binance_data[mycode].ask = bd.orderbook[mycode].ask
+                        self.binance_data[mycode].bid = bd.orderbook[mycode].bid
+                        self.U2B[mycode] = 100*(self.upbit_data[mycode].bid - self.binance_data[mycode].ask) / (self.upbit_data[mycode].bid + self.binance_data[mycode].ask)
+                        self.B2U[mycode] = 100*(self.binance_data[mycode].bid - self.upbit_data[mycode].ask) / (self.upbit_data[mycode].ask + self.binance_data[mycode].bid)
+                    elif upbitws.last_code == 'KRW-XRP':
+                        mycode = 'XRPKRW'
+                        self.upbit_data[mycode].timestamp = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].timestamp                    
+                        self.upbit_data[mycode].ask = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].units[0].ask_price
+                        self.upbit_data[mycode].bid = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].units[0].bid_price
+
+                    elif upbitws.last_code == 'KRW-ETH':
+                        mycode = 'ETHKRW'
+                        self.upbit_data[mycode].timestamp = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].timestamp                    
+                        self.upbit_data[mycode].ask = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].units[0].ask_price
+                        self.upbit_data[mycode].bid = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].units[0].bid_price
+                     
                 
                     # t = threading.Thread(target=self.worker_get_binance, args=(mycode,))
                     # t.start()
 
-                    self.upbit_data[mycode].timestamp = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].timestamp                    
-                    self.upbit_data[mycode].ask = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].units[0].ask_price
-                    self.upbit_data[mycode].bid = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].units[0].bid_price
-                    self.binance_data[mycode].ask = bd.orderbook[mycode].ask
-                    self.binance_data[mycode].bid = bd.orderbook[mycode].bid
-                        
+                    if self.upbit_data['ETHKRW'].bid > 0.0 and self.upbit_data['ETHKRW'].ask > 0.0 and self.binance_data['XRPETH'].ask:
+                        self.binance_data['XRPETH'].ask = bd.orderbook['XRPETH'].ask
+                        self.binance_data['XRPETH'].bid = bd.orderbook['XRPETH'].bid
+                        self.upbit_data['XRPETH2'].ask = self.upbit_data['XRPKRW'].ask / self.upbit_data['ETHKRW'].bid  #ETH2XRP
+                        self.upbit_data['XRPETH2'].bid = self.upbit_data['XRPKRW'].bid / self.upbit_data['ETHKRW'].ask  #XRP2ETH
+
+                        self.U2B['XRPETH2'] = 100*(self.upbit_data['XRPETH2'].bid - self.binance_data['XRPETH'].ask) / (self.upbit_data['XRPETH2'].bid + self.binance_data['XRPETH'].ask)
+                        self.B2U['XRPETH2'] = 100*(self.binance_data['XRPETH'].bid - self.upbit_data['XRPETH2'].ask) / (self.upbit_data['XRPETH2'].ask + self.binance_data['XRPETH'].bid)
                     upbitws.data_flag = False
                             
                     #비율 계산
-                    self.U2B[mycode] = 100*(self.upbit_data[mycode].bid - self.binance_data[mycode].ask) / (self.upbit_data[mycode].bid + self.binance_data[mycode].ask)
-                    self.B2U[mycode] = 100*(self.binance_data[mycode].bid - self.upbit_data[mycode].ask) / (self.upbit_data[mycode].ask + self.binance_data[mycode].bid)
-                    
+
                     
                     update_flag = True
                 
@@ -203,7 +227,7 @@ def handle_message(msg):
 
 def worker_get_orderbook(upbit):
     #start worker
-    upbit.set_type("orderbook",["ETH-XRP"])
+    upbit.set_type("orderbook",["ETH-XRP","KRW-XRP","KRW-ETH"])
     upbit.run()
 
 if __name__ == '__main__':
