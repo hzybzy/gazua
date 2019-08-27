@@ -188,7 +188,7 @@ class Gazuabot():
                         self.upbit_data[mycode].bid = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].units[0].bid_price
 
                     elif upbitws.last_code == 'KRW-ETH':
-                        mycode = 'ETHKRW'
+                        mycode = 'ETHKRW' 
                         self.upbit_data[mycode].timestamp = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].timestamp                    
                         self.upbit_data[mycode].ask = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].units[0].ask_price
                         self.upbit_data[mycode].bid = upbitws.orderbook[upbitws.codeindex[upbitws.last_code]].units[0].bid_price

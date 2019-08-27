@@ -53,7 +53,7 @@ class UpbitWebsocket():
                 
         text = ('[{"ticket":"hello"},{"type":"%s","codes":[') % data_type
         i = 1
-        l = len(codes)
+        l = len(codes) 
         for c in codes:    
             text = text + "\"" + c + "\""
             if i != l:
